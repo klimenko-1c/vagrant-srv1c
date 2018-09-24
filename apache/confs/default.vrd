@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<point xmlns="http://v8.1c.ru/8.2/virtual-resource-system"
+		xmlns:xs="http://www.w3.org/2001/XMLSchema"
+		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		base="/do2"
+		ib="Srvr=localhost;Ref=do2;">
+    <debug enable="true" url="192.168.16.11"/>
+		<ws> 
+			<point name="DMService" 
+				alias="dm.1cws" 
+				enable="true"/> 
+		</ws>
+</point>

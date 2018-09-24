@@ -1,0 +1,89 @@
+---
+- name: srv1c
+  hosts: all
+  become: true
+  tasks:
+
+  - name: Kernel configure
+    shell: echo "kernel.shmmax=2147483648" >> /etc/sysctl.conf && sysctl -p 
+
+  - name: Reconfigure locales
+    shell: locale-gen en_US ru_RU ru_RU.UTF-8 && update-locale LANG=ru_RU.UTF8 && dpkg-reconfigure locales
+  - name: Restart machine
+    shell: sleep 2 && shutdown -r now "Locale updates triggered"
+    async: 1
+    poll: 0
+    ignore_errors: true
+  - name: Waiting for server to come back
+    become: false
+    local_action: wait_for host={{ inventory_hostname }} state=started delay=10 timeout=20
+  # - name: Install libxslt
+  #   apt: name=libxslt1.1
+  # - name: Install ssl-cert
+  #   apt: name=ssl-cert
+  - name: Install PostgresqlPro, step 1
+    shell: echo "deb http://1c.postgrespro.ru/deb/ $(lsb_release -cs) main" > /etc/apt/sources.list.d/postgrespro-1c.list
+  - name: Install PostgresqlPro, step 2
+    get_url: url=http://1c.postgrespro.ru/keys/GPG-KEY-POSTGRESPRO-1C-92 dest=~
+    become: false
+  - name: Install PostgresqlPro, step 3
+    shell: cat GPG-KEY-POSTGRESPRO-1C-92 | apt-key add - && apt-get update
+  - name: Install PostgresqlPro, step 4
+    apt: name=postgresql-pro-1c-9.4
+  - name: Backup PostgresqlPro config
+    shell: cp /etc/postgresql/9.4/main/pg_hba.conf /etc/postgresql/9.4/main/pg_hba.conf.bak
+  - name: Configure PostgresqlPro, step 1
+    replace: dest=/etc/postgresql/9.4/main/pg_hba.conf regexp="(^local[ \t]+all[ \t]+postgres[ \t]+)(peer)([ \t]*$)" replace="#\1\2\n\1trust\3"
+  - name: Restart PostgresqlPro
+    service: name=postgresql state=restarted
+  - name: Configure PostgresqlPro, step 2
+    shell: psql -U postgres -d template1 -c "ALTER USER postgres PASSWORD 'postgres'"
+
+  - name: Install imagemagick
+    apt: name=imagemagick
+  - name: Patch imagemagick
+    file: src=/usr/lib/libMagickWand.so.5 dest=/usr/lib/libWand.so state=link force=yes
+
+  - name: Preparing installation mscorefonts, step 1
+    shell: echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true | debconf-set-selections
+  - name: Preparing installation mscorefonts, step 2
+    shell: echo ttf-mscorefonts-installer msttcorefonts/present-mscorefonts-eula note | debconf-set-selections
+  - name: Install mscorefonts
+    apt: name=ttf-mscorefonts-installer
+
+  - name: Get libicu48
+    get_url: url=http://security.ubuntu.com/ubuntu/pool/main/i/icu/libicu48_4.8.1.1-3ubuntu0.6_amd64.deb dest=~
+    become: false
+  - name: Install libicu48
+    shell: dpkg -i libicu48_4.8.1.1-3ubuntu0.6_amd64.deb
+
+  - name: srv1c unpack
+    unarchive: src=deb64.tar dest=~
+    become: false
+  - name: srv1c installation
+    shell: dpkg -i 1c-*.deb
+  - name: Start srv1c
+    service: name=srv1cv83 state=started
+
+  - name: HASP coping
+    copy: src=aksusbd_2.0-1_i386.deb dest=~
+    become: false
+  - name: add 32-bit architecture
+    shell: dpkg --add-architecture i386 && apt-get update
+  - name: 32-bit support libraries installation
+    apt: name=libc6:i386
+  - name: HASP installation
+    shell: dpkg -i --force-architecture aksusbd*.deb
+  - name: Start HASP
+    service: name=aksusbd state=started
+  - name: Restart machine
+    shell: sleep 2 && shutdown -r now "HASP"
+    async: 1
+    poll: 0
+    ignore_errors: true
+  - name: Waiting for server to come back
+    become: false
+    local_action: wait_for host={{ inventory_hostname }} state=started delay=10 timeout=20
+
+  - name: Install Apache
+    apt: name=apache2
